@@ -1,0 +1,1 @@
+Repository for processing full HITRAN .par file into individual CO2 isotopologues for MARVEL.
