@@ -1,9 +1,4 @@
 import pandas as pd
-import numpy as np
-
-'''
-This file deals with all the necessary functions for importing a HITRAN 160 file.
-'''
 
 
 def hitran_to_dataframe(filepath):
@@ -34,88 +29,62 @@ def hitran_to_dataframe(filepath):
         - 'g\'\'': Float, 7 characters
     """
 
-    # Define the format specification
+    with open(filepath, 'r') as f:
+        lines = [line.rstrip('\n') for line in f]
+
+    # Store the full raw lines
     format_spec = [('M', 2), ('I', 1), ('v', 12), ('S', 10), ('A', 10),
                    ('gamma_air', 5), ('gamma_self', 5),
-                   ('E\'\'', 10), ('n_air', 4),
-                   ('sigma_air', 8), ('V\'', 15), ('V\'\'', 15),
-                   ('Q\'', 15), ('Q\'\'', 15),
+                   ("E''", 10), ('n_air', 4),
+                   ('sigma_air', 8), ("V'", 15), ("V''", 15),
+                   ("Q'", 15), ("Q''", 15),
                    ('I_error', 6), ('I_ref', 12),
-                   ('flag', 1), ('g\'', 7), ('g\'\'', 7)]
+                   ('flag', 1), ("g'", 7), ("g''", 7)]
 
-    # Calculate the column widths
-    colspecs = [(sum([width for _, width in format_spec[:i]]), sum(
-        [width for _, width in format_spec[:i+1]])) for i in range(len(format_spec))]
+    colspecs = [(sum([w for _, w in format_spec[:i]]),
+                 sum([w for _, w in format_spec[:i+1]])) for i in range(len(format_spec))]
 
-    # Read the file using pandas
-    HITEMP_ALL = pd.read_fwf(filepath, colspecs=colspecs, names=[
+    hitran_all = pd.read_fwf(filepath, colspecs=colspecs, names=[
                              name for name, _ in format_spec])
-    return HITEMP_ALL
+    hitran_all.insert(0, 'raw', lines)
+
+    return hitran_all
 
 
-def infer_parity(J, l2):
+def infer_parity(df_iso):
     """
-    Infers the e/f parity of a rotational-vibrational state.
-
-    Parameters:
-        J (int): Rotational quantum number
-        l2 (str or int): Vibrational angular momentum quantum number for bending mode
-    Returns:
-        str: 'e' or 'f' or '' if parity not applicable
+    Infer the lower state parity based on upper state parity and selection rules.
+    For CO2, the rules depend on the l2 value and branch type.
     """
+    # Convert l2 to integer:
     try:
-        l2 = int(l2)
-        J = int(J)
-    except:
-        return ''
+        l2_upper = int(df_iso["l2'"])
+    except ValueError:
+        raise ValueError(f"Invalid l2' value: {df_iso["l2'"]}")
 
-    # Only apply parity splitting if l2 != 0 (i.e. in degenerate bending mode)
-    if l2 == 0:
-        return ''
+    # Get upper state parity
+    upper_parity = df_iso["parity'"]
+    if not upper_parity:
+        raise ValueError(
+            f"Upper state parity is not defined. In row:\n{df_iso}")
 
-    # For bending modes, use rule based on J
-    if J % 2 == 0:
-        return 'e'
-    else:
-        return 'f'
+    # Determine lower state parity based on selection rules
+    if l2_upper == 0:  # Σ-Σ transitions
+        if df_iso["branch"] in ['P', 'R']:  # ΔJ = ±1
+            # Parity must change
+            lower_parity = 'f' if upper_parity == 'e' else 'e'
+        else:  # Q branch (ΔJ = 0)
+            # Parity must not change
+            lower_parity = upper_parity
+    else:  # l2 > 0 (transitions involving Π or higher states)
+        if df_iso["branch"] in ['P', 'R']:  # ΔJ = ±1
+            # Parity must not change
+            lower_parity = upper_parity
+        else:  # Q branch (ΔJ = 0)
+            # Parity must change
+            lower_parity = 'f' if upper_parity == 'e' else 'e'
 
-
-def calculate_J(row, branches):
-    """
-    Calculate the rotational quantum number J based on the branch type.
-    Parameters:
-    row (dict): A dictionary containing the spectral line data. It must have keys 'Q\'\'' and 'J\'\''.
-    Returns:
-    int: The calculated rotational quantum number J.
-    Notes:
-    - The function assumes that 'J\'' is a string where the first character indicates the branch type.
-    - The branch types are 'O', 'P', 'Q', 'R', and 'S'.
-    - The function adjusts the value of 'J\'\'' based on the branch type:
-        - 'O': J = J'' - 2
-        - 'P': J = J'' - 1
-        - 'Q': J = J''
-        - 'R': J = J'' + 1
-        - 'S': J = J'' + 2
-    - If the branch type is not recognized, the function returns the value of 'J\'\''.
-    """
-
-    if row['J\''][0] == 'O':
-        branches.append("O")
-        return int(row['J\'\'']) - 2
-    elif row['J\''][0] == 'P':
-        branches.append("P")
-        return int(row['J\'\'']) - 1
-    elif row['J\''][0] == 'Q':
-        branches.append("Q")
-        return int(row['J\'\''])
-    elif row['J\''][0] == 'R':
-        branches.append("R")
-        return int(row['J\'\'']) + 1
-    elif row['J\''][0] == 'S':
-        branches.append("S")
-        return int(row['J\'\'']) + 2
-    else:
-        return int(row['J\'\''])
+    return lower_parity
 
 
 def single_isotopologue(df_all, isotopologue_number, branches=False):
@@ -129,65 +98,77 @@ def single_isotopologue(df_all, isotopologue_number, branches=False):
         pd.DataFrame: A DataFrame containing the filtered and processed isotopologue data.
     """
 
-    branches = []
+    branch_list = []
 
-    # Filter full df to just isotopologue required & create copy
-    df_isotopologue = pd.DataFrame()
-    df_isotopologue = df_all.loc[df_all['I'] == isotopologue_number].copy()
+    # Filter for specific isotopologue
+    df_iso = df_all[df_all["I"] == isotopologue_number].copy()
 
-    # Split Q'' into correct columns
-    df_isotopologue['J\''] = df_isotopologue['Q\'\''].str.extract(
-        r'([A-Za-z]+)', expand=False)
-    df_isotopologue['J\'\''] = df_isotopologue['Q\'\''].str.extract(
-        r'(\d+)', expand=False).astype(int)
+    # Extract branch, J'', and parity from raw line (e.g. "P 51e")
+    df_iso["branch"] = df_iso["raw"].str.extract(
+        r'\b([OPQRS])\s*\d+[ef]?', expand=False)
+    df_iso["J''"] = df_iso["raw"].str.extract(
+        r'\b[OPQRS]\s*(\d+)[ef]?', expand=False).astype(int)
+    df_iso["parity'"] = df_iso["raw"].str.extract(
+        r'\b[OPQRS]\s*\d+([ef])', expand=False).fillna('')
 
-    # See calculate_J function doc
-    # for index, row in df_isotopologue.iterrows():
-    df_isotopologue['J\''] = df_isotopologue.apply(
-        lambda row: calculate_J(row, branches), axis=1)
+    # Calculate J' based on branch
+    def calc_Jprime(branch, Jpp):
+        branch_list.append(branch)
+        return {
+            "O": Jpp - 2,
+            "P": Jpp - 1,
+            "Q": Jpp,
+            "R": Jpp + 1,
+            "S": Jpp + 2
+        }.get(branch, Jpp)
 
-    # Drop unnecessary columns for this work
-    df_isotopologue.drop(columns=['M', 'I', 'gamma_air', 'gamma_self', 'n_air',
-                         'sigma_air', 'I_error', 'I_ref', 'flag', 'Q\'', 'Q\'\''], inplace=True)
+    df_iso["J'"] = df_iso.apply(lambda row: calc_Jprime(
+        row["branch"], row["J''"]), axis=1)
 
-    # Reorder columns for legibility
-    df_isotopologue = df_isotopologue[[
-        "v", "S", "A", "E\'\'", "V\'", "V\'\'", "J\'", "J\'\'", "g\'", "g\'\'"]]
+    # Drop now-unnecessary columns
+    df_iso.drop(columns=["M", "I", "gamma_air", "gamma_self", "n_air",
+                         "sigma_air", "I_error", "I_ref", "flag", "Q'", "Q''", "raw"], inplace=True)
 
-    if branches == True:
-        print("Branches:")
-        o_count = sum(1 for item in branches if item == "O")
-        print(f"\tO = {o_count}")
-        p_count = sum(1 for item in branches if item == "P")
-        print(f"\tP = {p_count}")
-        q_count = sum(1 for item in branches if item == "Q")
-        print(f"\tQ = {q_count}")
-        r_count = sum(1 for item in branches if item == "R")
-        print(f"\tR = {r_count}")
-        s_count = sum(1 for item in branches if item == "S")
-        print(f"\tS = {s_count}")
+    # Reorder
+    df_iso = df_iso[["v", "S", "A", "E''", "V'",
+                     "V''", "J'", "J''", "g'", "g''", "parity'", "branch"]]
+
+    # Remove polyad rows from the dataframe
+    df_iso = df_iso[~df_iso["V'"].str.contains('-2-2-2-20')]
+    df_iso = df_iso[~df_iso["V''"].str.contains('-2-2-2-20')]
 
     # Split V' and V'' into quantum numbers
-    df_isotopologue[['v1\'', 'v2\'', 'l2\'', 'v3\'']
-                    ] = df_isotopologue['V\''].str.split(expand=True)
-    df_isotopologue[['v1\'\'', 'v2\'\'', 'l2\'\'', 'v3\'\'']
-                    ] = df_isotopologue['V\'\''].str.split(expand=True)
+    df_iso[["v1'", "v2'", "l2'", "v3'"]
+           ] = df_iso["V'"].str.split(expand=True)
+    df_iso[["v1''", "v2''", "l2''", "v3''"]
+           ] = df_iso["V''"].str.split(expand=True)
 
-    # Drop the original V' and V'' columns
-    df_isotopologue.drop(columns=['V\'', 'V\'\''], inplace=True)
+    # Convert quantum numbers to integers
+    df_iso[["v1'", "v2'", "l2'", "v3'",
+            "v1''", "v2''", "l2''", "v3''"]] = df_iso[["v1'", "v2'", "l2'", "v3'",
+                                                       "v1''", "v2''", "l2''", "v3''"]].astype(int)
+    # Convert J' and J'' to integers
+    df_iso["J'"] = df_iso["J'"].astype(int)
+    df_iso["J''"] = df_iso["J''"].astype(int)
 
-    # Add parity columns based on J and l2
-    df_isotopologue['parity\''] = df_isotopologue.apply(
-        lambda row: infer_parity(row['J\''], row['l2\'']), axis=1)
+    # Apply the parity inference function
+    df_iso["parity''"] = df_iso.apply(infer_parity, axis=1)
 
-    df_isotopologue['parity\'\''] = df_isotopologue.apply(
-        lambda row: infer_parity(row['J\'\''], row['l2\'\'']), axis=1)
+    # Drop the branch column & V' and V'' columns
+    df_iso.drop(columns=["V'", "V''", "branch"], inplace=True)
 
-    # Reorder columns for legibility
-    df_isotopologue = df_isotopologue[[
-        "v", "S", "A", "E\'\'",
-        "v1\'", "v2\'", "l2\'", "v3\'",
-        "v1\'\'", "v2\'\'", "l2\'\'", "v3\'\'",
-        "J\'", "parity\'", "J\'\'", "parity\'\'", "g\'", "g\'\'"]]
+    # Reorder for clarity
+    df_iso = df_iso[[
+        "v", "S", "A", "E''",
+        "v1'", "v2'", "l2'", "v3'",
+        "v1''", "v2''", "l2''", "v3''",
+        "J'", "parity'", "J''", "parity''", "g'", "g''"
+    ]]
 
-    return df_isotopologue
+    # Optional: print branch counts
+    if branches:
+        print("Branches:")
+        for b in ['O', 'P', 'Q', 'R', 'S']:
+            print(f"\t{b} = {branch_list.count(b)}")
+
+    return df_iso
