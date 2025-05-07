@@ -53,7 +53,7 @@ def main():
     print("Script started...")
 
     hitran_full_df = hitran_functions.hitran_to_dataframe(args.hitemp_filepath)
-    print("HITEMP file loaded...")
+    print("HITRAN file loaded...")
 
     isotopologues = args.isotopologues
     if isotopologues is None:
@@ -69,8 +69,8 @@ def main():
 
     marvel_input_isotopologue_dfs = []
     for iso in full_single_isotopologue_dfs:
-        marvel_input = iso[["v", "v1\'", "v2\'", "l2\'", "v3\'", "J\'", "parity\'",
-                            "v1\'\'", "v2\'\'", "l2\'\'", "v3\'\'", "J\'\'", "parity\'\'"]]
+        marvel_input = iso[["v", "v1'", "v2'", "l2'", "v3'", "r'", "J'", "sym'",
+                            "v1''", "v2''", "l2''", "v3''", "r''", "J''", "sym''"]]
         marvel_input.insert(1, 'unc', 0.0001)
         marvel_input = marvel_input.copy()
         marvel_input['tag'] = ['tag' + str(i + 1)
