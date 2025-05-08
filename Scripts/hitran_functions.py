@@ -139,8 +139,14 @@ def single_isotopologue(df_all, isotopologue_number, branches=False):
     df_iso = df_all[df_all["I"] == isotopologue_number].copy()
 
     # Remove polyad rows from the dataframe
-    df_iso = df_iso[~df_iso["v1'"] == -2]
-    df_iso = df_iso[~df_iso["v1''"] == -2]
+    df_iso[(df_iso["v1'"] >= 0) |
+           (df_iso["v1''"] >= 0) |
+           (df_iso["v2'"] >= 0) |
+           (df_iso["v2''"] >= 0) |
+           (df_iso["l2'"] >= 0) |
+           (df_iso["l2''"] >= 0) |
+           (df_iso["v3'"] >= 0) |
+           (df_iso["v3''"] >= 0)]
 
     df_iso["J'"] = df_iso.apply(lambda row: calc_J_upper(
         row["Branch"], row["J''"]), axis=1)
