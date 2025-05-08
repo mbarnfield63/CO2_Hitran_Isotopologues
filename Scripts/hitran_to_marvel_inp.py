@@ -22,14 +22,14 @@ isotopologue_map = {
 
 def main():
     """
-    Initializes the script to process a hitemp file into individual MARVEL input files by isotopologue.
+    Initializes the script to process a hitran file into individual MARVEL input files by isotopologue.
     This function sets up an argument parser to handle the following command-line arguments:
-    - hitemp_filepath (str): Filepath to the hitemp file.
+    - hitran_filepath (str): Filepath to the hitran file.
     - isotopologues (int): Isotopologues to be extracted.
     - save_folder (str): Path to the folder to save the output files.
     The function performs the following steps:
     1. Parses the command-line arguments.
-    2. Converts the hitemp file to a DataFrame using hitran_functions.hitran_to_dataframe.
+    2. Converts the hitran file to a DataFrame using hitran_functions.hitran_to_dataframe.
     3. Extracts the specified isotopologues or all unique isotopologues if none are specified.
     4. Creates individual DataFrames for each isotopologue.
     5. Formats each DataFrame to match the MARVEL input requirements.
@@ -37,9 +37,9 @@ def main():
     """
 
     parser = argparse.ArgumentParser(
-        description='Process hitemp file into individual MARVEL input files by isotopologue.')
-    parser.add_argument('hitemp_filepath', type=str,
-                        help='Filepath to the hitemp file.')
+        description='Process hitran file into individual MARVEL input files by isotopologue.')
+    parser.add_argument('hitran_filepath', type=str,
+                        help='Filepath to the hitran file.')
     parser.add_argument('save_folder', type=str,
                         help='Path to folder to save files.')
     parser.add_argument('molecule', type=str,
@@ -52,7 +52,7 @@ def main():
 
     print("Script started...")
 
-    hitran_full_df = hitran_functions.hitran_to_dataframe(args.hitemp_filepath)
+    hitran_full_df = hitran_functions.hitran_to_dataframe(args.hitran_filepath)
     print("HITRAN file loaded...")
 
     isotopologues = args.isotopologues
@@ -97,6 +97,6 @@ def main():
 if __name__ == "__main__":
     main()
     # Example usage for two isotopologues:
-    # python hitran_to_marvel_inp.py /path/to/hitemp_file.txt /path/to/save_folder CO2 --isotopologues 626 636
+    # python hitran_to_marvel_inp.py /path/to/hitran_file.par /path/to/save_folder CO2 --isotopologues 626 636
     # Example usage for all isotopologues:
-    # python hitran_to_marvel_inp.py /path/to/hitemp_file.txt /path/to/save_folder CO2
+    # python hitran_to_marvel_inp.py /path/to/hitran_file.par /path/to/save_folder CO2
